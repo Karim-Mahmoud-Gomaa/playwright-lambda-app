@@ -47,6 +47,6 @@ jobs:
           IMAGE_REPO=654654505574.dkr.ecr.us-west-1.amazonaws.com/playwright-app
           IMAGE_TAG=${GITHUB_SHA::7}
           aws lambda update-function-code \
-            --function-name your-lambda-name \
+            --function-name arn:aws:lambda:us-west-1:654654505574:function:AutoRegister \
             --image-uri $IMAGE_REPO:$IMAGE_TAG \
             --region us-west-1
