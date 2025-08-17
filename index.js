@@ -9,10 +9,6 @@ const CheckTrustIp = require('./CheckTrustIp');
 const RecaptchaSolver = require('./recaptcha/captchaSolver');
 const axios = require('axios');
 
-
-
-// أعلى الملف (إضافات):
-const { chromium, request } = require('playwright');
 const fs = require('fs');
 function sinceMs(s) { return `${Date.now() - s}ms`; }
 function log(tag, data) { console.log(`[${tag}]`, typeof data === 'string' ? data : JSON.stringify(data)); }
