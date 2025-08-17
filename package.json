@@ -6,9 +6,9 @@
   "type": "commonjs",
   "dependencies": {
     "axios": "^1.11.0",
-    "dotenv": "^16.4.5",
+    "dotenv": "16.4.5",
     "fingerprint-generator": "^2.1.69",
     "fingerprint-injector": "^2.1.69",
-    "playwright": "^1.54.2"
+    "playwright": "1.54.2"
   }
 }
