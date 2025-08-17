@@ -13,6 +13,12 @@ const fs = require('fs');
 function sinceMs(s) { return `${Date.now() - s}ms`; }
 function log(tag, data) { console.log(`[${tag}]`, typeof data === 'string' ? data : JSON.stringify(data)); }
 
+// طبّع البروكسي لـ Chromium (تجنّب https://)
+function normalizeProxyForChromium(p) {
+  if (!p?.server) return p;
+  return { ...p, server: p.server.replace(/^https:\/\//i, 'http://') };
+}
+
 // كشف الـ IP/Timezone عبر نفس البروكسي لكن بدون متصفح
 async function detectViaProxyViaRequest(proxy) {
   const rc = await request.newContext({ proxy, timeout: 30000 });
