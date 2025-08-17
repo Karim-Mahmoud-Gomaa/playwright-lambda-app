@@ -1,0 +1,43 @@
+name: Deploy to AWS ECR
+
+on:
+  push:
+    branches:
+      - main   # النشر فقط عند الدفع على main
+      # - dev  # لو تحب تضيف dev لكن بدون push للـECR
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write   # ضروري عشان OIDC
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # تسجيل الدخول في AWS باستخدام الـOIDC Role
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::654654505574:role/github-actions-playwright  
+          aws-region: us-west-1
+
+      # تسجيل الدخول إلى ECR
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # بناء ورفع الصورة
+      - name: Build, Tag, and Push image to Amazon ECR
+        run: |
+          IMAGE_REPO=654654505574.dkr.ecr.us-west-1.amazonaws.com/playwright-app
+          IMAGE_TAG=${GITHUB_SHA::7}
+
+          docker build -t $IMAGE_REPO:$IMAGE_TAG .
+          docker push $IMAGE_REPO:$IMAGE_TAG
+
+          # اختياري: تحديث latest tag
+          docker tag $IMAGE_REPO:$IMAGE_TAG $IMAGE_REPO:latest
+          docker push $IMAGE_REPO:latest
