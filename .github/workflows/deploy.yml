@@ -41,3 +41,12 @@ jobs:
           # اختياري: تحديث latest tag
           docker tag $IMAGE_REPO:$IMAGE_TAG $IMAGE_REPO:latest
           docker push $IMAGE_REPO:latest
+
+      - name: Update Lambda to new image
+        run: |
+          IMAGE_REPO=654654505574.dkr.ecr.us-west-1.amazonaws.com/playwright-app
+          IMAGE_TAG=${GITHUB_SHA::7}
+          aws lambda update-function-code \
+            --function-name your-lambda-name \
+            --image-uri $IMAGE_REPO:$IMAGE_TAG \
+            --region us-west-1
