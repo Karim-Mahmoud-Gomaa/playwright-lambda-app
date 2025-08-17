@@ -274,6 +274,8 @@ exports.handler = async (event = {}) => {
   const COOLDOWN = Number(event.RETRY_COOLDOWN_MS || process.env.RETRY_COOLDOWN_MS || 1500);
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    console.log('runOnce ...');
+    
     const res = await runOnce(attempt);
     if (res.ok) {
       return { ok: true, attempt, result: res };

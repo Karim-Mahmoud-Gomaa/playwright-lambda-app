@@ -44,6 +44,8 @@ function normalizeProxy(data) {
 
 /** يجلب بروكسي جديد من API الخاص بك */
 async function getNewProxy() {
+  console.log('getNewProxy ... '+process.env.SERVER_URL+'/api/get_new_proxy');
+
   const endpoint = process.env.SERVER_URL+'/api/get_new_proxy';
   
   if (!endpoint) throw new Error('SERVER_URL is not set');
@@ -75,6 +77,8 @@ async function scoreProxy(norm) {
 *  - cooldownMs: فترة انتظار بين المحاولات
 */
 async function getGoodProxy(opts = {}) {
+  console.log('getGoodProxy ...');
+  
   const maxAttempts = opts.maxAttempts ?? 5;
   const cooldownMs = opts.cooldownMs ?? 1000;
   
