@@ -129,18 +129,29 @@ async function findText(page, text, selector = null, timeout = 3000) {
   }
 }
 
-async function getCode(email) {
-  try {
-    log('CREATE', 'waiting 15s for code...');
-    await delay(15000);
-    log('getCode', { email });
-    const { data } = await axios.post(`${process.env.SERVER_URL}/api/get_code`, { email });
-    log('getCode', { code: data });
-    return data?.code || null;
-  } catch (e) {
-    console.error('getCode error:', e.message);
-    return null;
+async function getCode(email, retries = 3, waitMs = 20000) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      log('getCode', { attempt, email });
+      const { data } = await axios.post(`${process.env.SERVER_URL}/api/get_code`, { email });
+      const code = data?.code || null;
+      
+      if (code) {
+        log('getCode', { attempt, found: true });
+        return code;
+      } else {
+        log('getCode', { attempt, found: false });
+      }
+    } catch (e) {
+      console.error(`getCode error (attempt ${attempt}):`, e.message);
+    }
+    
+    if (attempt < retries) {
+      log('getCode', `waiting ${waitMs}ms before retry ${attempt + 1}/${retries}...`);
+      await delay(waitMs);
+    }
   }
+  return null;
 }
 
 async function CreateAccount(page, profileData) {
@@ -183,9 +194,6 @@ async function CreateAccount(page, profileData) {
     
     // احصل على كود البريد
     let code = await getCode(email);
-    if (!code) {
-      code = await getCode(email);
-    }
     log('CREATE code from server : ', { code });
     if (!code) return false;
     
