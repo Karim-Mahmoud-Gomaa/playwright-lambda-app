@@ -31,8 +31,8 @@ async function detectViaProxyViaRequest(proxy) {
     return {
       timezoneId: meta.timezone || 'America/New_York',
       geo: (meta.latitude && meta.longitude)
-        ? { latitude: meta.latitude, longitude: meta.longitude, accuracy: 50 }
-        : { latitude: 40.7128, longitude: -74.0060, accuracy: 50 },
+      ? { latitude: meta.latitude, longitude: meta.longitude, accuracy: 50 }
+      : { latitude: 40.7128, longitude: -74.0060, accuracy: 50 },
       ip: meta.ip, country: meta.country, region: meta.region, city: meta.city
     };
   } finally { await rc.dispose().catch(() => {}); }
@@ -131,7 +131,11 @@ async function findText(page, text, selector = null, timeout = 3000) {
 
 async function getCode(email) {
   try {
+    log('CREATE', 'waiting 15s for code...');
+    await delay(15000);
+    log('getCode', { email });
     const { data } = await axios.post(`${process.env.SERVER_URL}/api/get_code`, { email });
+    log('getCode', { code: data });
     return data?.code || null;
   } catch (e) {
     console.error('getCode error:', e.message);
@@ -180,10 +184,9 @@ async function CreateAccount(page, profileData) {
     // احصل على كود البريد
     let code = await getCode(email);
     if (!code) {
-      log('CREATE', 'waiting 15s for code...');
-      await delay(15000);
       code = await getCode(email);
     }
+    log('CREATE code from server : ', { code });
     if (!code) return false;
     
     await page.type('input[name="confirmationCode"]', code, { delay: 80 });
@@ -271,29 +274,29 @@ async function runOnce(attempt) {
     const got = await getGoodProxy({ maxAttempts: 5, cooldownMs: 1200 });
     const proxyForReq = got?.proxy;                                   // للكشف
     const proxyForChromium = normalizeProxyForChromium(got?.proxy);   // للمتصفح
-
+    
     log('PROXY', { server: proxyForChromium?.server, hasAuth: !!proxyForChromium?.username });
-
+    
     // 1) كشف عبر نفس البروكسي (بدون متصفح)
     const detection = await detectViaProxyViaRequest(proxyForReq).catch(() => null);
     log('DETECT-RESULT', detection);
-
+    
     const loc = {
       timezoneId: detection?.timezoneId || US_DEFAULT.timezoneId,
       geo: detection?.geo || US_DEFAULT.geo
     };
-
+    
     // 2) شغّل Persistent Context (أكثر ثباتًا مع البروكسي)
     const userDataDir = `/tmp/pw-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     try { fs.mkdirSync(userDataDir, { recursive: true }); } catch {}
-
+    
     const launchArgs = [
       '--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
       '--no-first-run','--no-default-browser-check','--lang=en-US',
       '--no-zygote','--disable-gpu','--disable-software-rasterizer','--disable-extensions'
       // جرّب تفعيل السطر التالي لو احتجت: '--headless=old'
     ];
-
+    
     context = await chromium.launchPersistentContext(userDataDir, {
       headless: true,
       args: launchArgs,
@@ -306,9 +309,9 @@ async function runOnce(attempt) {
     });
     context.browser()?.on('disconnected', () =>
       console.error(`[${sinceMs(start)} BROWSER] disconnected (crash/close)`));
-
+    
     log('CONTEXT', { created: true, tz: loc.timezoneId, geo: loc.geo });
-
+    
     // 3) بصمة + هيدرز (اختياري تعطيل الحقن بمتغير بيئة)
     const gen = new FingerprintGenerator({
       browsers: ['chrome'], devices: ['desktop'],
@@ -316,7 +319,7 @@ async function runOnce(attempt) {
     });
     const fpWithHeaders = gen.getFingerprint({ locales: [US_DEFAULT.locale, 'en'] });
     const { fingerprint, headers } = fpWithHeaders;
-
+    
     await context.setExtraHTTPHeaders({
       'Accept-Language': headers?.['accept-language'] || US_DEFAULT.acceptLanguage,
       'Sec-CH-UA': headers?.['sec-ch-ua'],
@@ -326,7 +329,7 @@ async function runOnce(attempt) {
       'Upgrade-Insecure-Requests': '1'
     });
     log('CONTEXT', 'headers set');
-
+    
     if (!process.env.DISABLE_FP_INJECTOR) {
       const injector = new FingerprintInjector();
       await injector.attachFingerprintToPlaywright(context, fpWithHeaders);
@@ -334,26 +337,26 @@ async function runOnce(attempt) {
     } else {
       log('CONTEXT', 'fingerprint injector disabled via env');
     }
-
+    
     // 4) افتح صفحة وكمّل شغلك
     log('CONTEXT', 'before newPage');
     const page = await context.newPage();
     log('CONTEXT', 'after newPage');
-
+    
     // فحص الثقة
     await delay(1200);
     const check = new CheckTrustIp();
     const isTrust = await check.launch(page);
     log('CHECK', { isTrust });
     if (!isTrust) return { ok: false, reason: 'trust-failed' };
-
+    
     const profileData = await check.getNewProfile();
-    log('RUN', { gotProfile: !!profileData });
-
+    log('RUN', { gotProfile: profileData });
+    
     const ok = await CreateAccount(page, profileData);
     log('RUN', { createOk: ok });
     return { ok, reason: ok ? 'done' : 'create-failed' };
-
+    
   } catch (e) {
     console.error('runOnce error:', e);
     return { ok: false, reason: e?.message || 'error' };
