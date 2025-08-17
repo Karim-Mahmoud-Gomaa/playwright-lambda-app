@@ -1,6 +1,7 @@
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const axios = require('axios');
+const { log } = require('console');
 const fs = require('fs');
 
 class CheckTrustIp {
@@ -22,10 +23,18 @@ class CheckTrustIp {
     // اختياري: نتائج أقل لتقليل الحمل
     // u.searchParams.set('num', '10');
     
+    console.log('GOOGLE', q);
+    
     const resp = await page.goto(u.toString(), {
       waitUntil: 'domcontentloaded',
       timeout: 60000
     }).catch(() => null);
+    
+    if (!resp) {
+      console.log('GOOGLE', 'no response');
+      return false;
+    }
+    console.log('GOOGLE', resp.status());
     
     const status = resp?.status();
     const html = (await page.content()).toLowerCase();
