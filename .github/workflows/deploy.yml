@@ -5,7 +5,7 @@ on:
     branches:
       - master   # النشر فقط عند الدفع على master
       # - dev  # لو تحب تضيف dev لكن بدون push للـECR
-
+ 
 jobs:
   deploy:
     runs-on: ubuntu-latest
