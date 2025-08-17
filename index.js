@@ -73,7 +73,7 @@ async function getCode(email) {
     return null;
   }
 }
-
+ 
 async function CreateAccount(page, profileData) {
   const { name, email, password } = profileData;
   try {
