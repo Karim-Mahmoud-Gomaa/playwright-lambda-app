@@ -56,7 +56,7 @@ class CheckTrustIp {
     }
     console.log('google status=', status, 'term=', q, 'challenge=', challengeText, 'hasResults=', hasResults);
     
-    return true
+    // return true
     return ok
     
     

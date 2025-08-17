@@ -276,100 +276,97 @@ return true;
 }
 
 async function runOnce(attempt) {
-  const start = Date.now();
-  let context;  // persistent context
+  const ROTATE_RETRIES = 3;
+  const ROTATE_WAIT_MS = 5000;
+  
+  let browser, workContext;
+  
   try {
-    const got = await getGoodProxy({ maxAttempts: 5, cooldownMs: 1200 });
-    const proxyForReq = got?.proxy;                                   // للكشف
-    const proxyForChromium = normalizeProxyForChromium(got?.proxy);   // للمتصفح
-    
-    log('PROXY', { server: proxyForChromium?.server, hasAuth: !!proxyForChromium?.username });
-    
-    // 1) كشف عبر نفس البروكسي (بدون متصفح)
-    const detection = await detectViaProxyViaRequest(proxyForReq).catch(() => null);
-    log('DETECT-RESULT', detection);
-    
-    const loc = {
-      timezoneId: detection?.timezoneId || US_DEFAULT.timezoneId,
-      geo: detection?.geo || US_DEFAULT.geo
-    };
-    
-    // 2) شغّل Persistent Context (أكثر ثباتًا مع البروكسي)
-    const userDataDir = `/tmp/pw-user-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    try { fs.mkdirSync(userDataDir, { recursive: true }); } catch {}
-    
-    const launchArgs = [
-      '--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
-      '--no-first-run','--no-default-browser-check','--lang=en-US',
-      '--no-zygote','--disable-gpu','--disable-software-rasterizer','--disable-extensions'
-      // جرّب تفعيل السطر التالي لو احتجت: '--headless=old'
-    ];
-    
-    context = await chromium.launchPersistentContext(userDataDir, {
-      headless: true,
-      args: launchArgs,
-      proxy: proxyForChromium,            // ← البروكسي هنا
-      viewport: { width: 1280, height: 800 },
-      locale: US_DEFAULT.locale,
-      timezoneId: loc.timezoneId,
-      geolocation: loc.geo,
-      permissions: ['geolocation']
-    });
-    context.browser()?.on('disconnected', () =>
-      console.error(`[${sinceMs(start)} BROWSER] disconnected (crash/close)`));
-    
-    log('CONTEXT', { created: true, tz: loc.timezoneId, geo: loc.geo });
-    
-    // 3) بصمة + هيدرز (اختياري تعطيل الحقن بمتغير بيئة)
-    const gen = new FingerprintGenerator({
-      browsers: ['chrome'], devices: ['desktop'],
-      operatingSystems: ['windows'], locales: [US_DEFAULT.locale]
-    });
-    const fpWithHeaders = gen.getFingerprint({ locales: [US_DEFAULT.locale, 'en'] });
-    const { fingerprint, headers } = fpWithHeaders;
-    
-    await context.setExtraHTTPHeaders({
-      'Accept-Language': headers?.['accept-language'] || US_DEFAULT.acceptLanguage,
-      'Sec-CH-UA': headers?.['sec-ch-ua'],
-      'Sec-CH-UA-Mobile': headers?.['sec-ch-ua-mobile'],
-      'Sec-CH-UA-Platform': headers?.['sec-ch-ua-platform'],
-      'Sec-CH-UA-Platform-Version': headers?.['sec-ch-ua-platform-version'],
-      'Upgrade-Insecure-Requests': '1'
-    });
-    log('CONTEXT', 'headers set');
-    
-    if (!process.env.DISABLE_FP_INJECTOR) {
+    for (let rot = 1; rot <= ROTATE_RETRIES; rot++) {
+      // 1) جيب بروكسي جديد لكل محاولة
+      const { proxy } = await getGoodProxy({ maxAttempts: 5, cooldownMs: 1200 });
+      const proxyForChromium = normalizeProxyForChromium(proxy); // لو عندك دالة تطبيع http://
+      
+      // (اختياري) حدّث الـ loc من ipapi لنفس البروكسي
+      const detection = await detectViaProxyViaRequest(proxy).catch(() => null);
+      const loc = {
+        timezoneId: detection?.timezoneId || US_DEFAULT.timezoneId,
+        geo: detection?.geo || US_DEFAULT.geo
+      };
+      
+      // 2) أغلق أي متصفح/سياق سابقين قبل ما تعيد الإنشاء
+      if (workContext) { try { await workContext.close(); } catch {} workContext = null; }
+      if (browser)     { try { await browser.close(); } catch {} browser = null; }
+      
+      // 3) شغّل المتصفح بهذا البروكسي
+      const launchArgs = [
+        '--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
+        '--no-first-run','--no-default-browser-check','--lang=en-US',
+        '--no-zygote','--disable-gpu','--disable-software-rasterizer','--disable-extensions'
+      ];
+      browser = await chromium.launch({ headless: true, args: launchArgs, proxy: proxyForChromium });
+      
+      // 4) أنشئ سياق وبصمة/هيدرز لكل محاولة (يناسب الـ IP الجديد)
+      const gen = new FingerprintGenerator({
+        browsers: ['chrome'], devices: ['desktop'],
+        operatingSystems: ['windows'], locales: [US_DEFAULT.locale]
+      });
+      const fpWithHeaders = gen.getFingerprint({ locales: [US_DEFAULT.locale, 'en'] });
+      const { fingerprint, headers } = fpWithHeaders;
+      
+      workContext = await browser.newContext({
+        userAgent: fingerprint.userAgent,
+        locale: US_DEFAULT.locale,
+        timezoneId: loc.timezoneId,
+        viewport: fingerprint.screen,
+        deviceScaleFactor: fingerprint.screen?.deviceScaleFactor || 1,
+        geolocation: loc.geo,
+        permissions: ['geolocation']
+      });
+      
+      await workContext.setExtraHTTPHeaders({
+        'Accept-Language': headers?.['accept-language'] || US_DEFAULT.acceptLanguage,
+        'Sec-CH-UA': headers?.['sec-ch-ua'],
+        'Sec-CH-UA-Mobile': headers?.['sec-ch-ua-mobile'],
+        'Sec-CH-UA-Platform': headers?.['sec-ch-ua-platform'],
+        'Sec-CH-UA-Platform-Version': headers?.['sec-ch-ua-platform-version'],
+        'Upgrade-Insecure-Requests': '1'
+      });
+      
+      // (اختياري) حقن بصمة
       const injector = new FingerprintInjector();
-      await injector.attachFingerprintToPlaywright(context, fpWithHeaders);
-      log('CONTEXT', 'fingerprint attached');
-    } else {
-      log('CONTEXT', 'fingerprint injector disabled via env');
+      await injector.attachFingerprintToPlaywright(workContext, fpWithHeaders);
+      
+      const page = await workContext.newPage();
+      
+      // 5) فحص الثقة
+      const check = new CheckTrustIp();
+      const isTrust = await check.launch(page);
+      console.log(`[Attempt ${attempt}] [Rot ${rot}/${ROTATE_RETRIES}] isTrust=`, isTrust);
+      
+      if (isTrust) {
+        // كمل شغلك
+        const profileData = await check.getNewProfile();
+        const ok = await CreateAccount(page, profileData);
+        return { ok, reason: ok ? 'done' : 'create-failed' };
+      }
+      
+      // فشل الثقة → جرّب بروكسي جديد بعد 20s
+      if (rot < ROTATE_RETRIES) {
+        console.log(`[Attempt ${attempt}] rotate proxy after ${ROTATE_WAIT_MS}ms...`);
+        await delay(ROTATE_WAIT_MS);
+      }
     }
     
-    // 4) افتح صفحة وكمّل شغلك
-    log('CONTEXT', 'before newPage');
-    const page = await context.newPage();
-    log('CONTEXT', 'after newPage');
-    
-    // فحص الثقة
-    await delay(1200);
-    const check = new CheckTrustIp();
-    const isTrust = await check.launch(page);
-    log('CHECK', { isTrust });
-    if (!isTrust) return { ok: false, reason: 'trust-failed' };
-    
-    const profileData = await check.getNewProfile();
-    log('RUN', { gotProfile: profileData });
-    
-    const ok = await CreateAccount(page, profileData);
-    log('RUN', { createOk: ok });
-    return { ok, reason: ok ? 'done' : 'create-failed' };
+    // لو فشلت كل محاولات التدوير
+    return { ok: false, reason: 'trust-failed-after-rotations' };
     
   } catch (e) {
     console.error('runOnce error:', e);
     return { ok: false, reason: e?.message || 'error' };
   } finally {
-    if (context) { try { await context.close(); log('CLOSE', 'context closed'); } catch {} }
+    if (workContext) { try { await workContext.close(); } catch {} }
+    if (browser)     { try { await browser.close(); } catch {} }
   }
 }
 
