@@ -1,26 +1,39 @@
 FROM public.ecr.aws/lambda/nodejs:22
 
 ENV NODE_ENV=production
-# خلي Playwright يحط المتصفحات في مسار ثابت داخل الصورة
+# خزن المتصفحات داخل الصورة (مسار ثابت)
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # امنع أي تنزيل أثناء التشغيل
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 WORKDIR /var/task
 
-# انسخ تعريفات الحزم
-COPY package*.json ./
+# اعتماديّات النظام اللازمة لـ Chromium على Amazon Linux 2023
+RUN dnf -y update && dnf -y install \
+    at-spi2-core atk cairo cups-libs dbus-libs dbus-glib \
+    libX11 libXcomposite libXcursor libXdamage libXext libXi libXrandr libXrender libXtst \
+    libXfixes libxcb libxkbcommon libX11-xcb libdrm \
+    mesa-libgbm mesa-libEGL \
+    nss nspr \
+    pango gdk-pixbuf2 glib2 \
+    alsa-lib \
+    xorg-x11-fonts-Type1 xorg-x11-fonts-misc liberation-fonts \
+    fontconfig freetype \
+    libstdc++ libgcc \
+    libxshmfence \
+    ca-certificates tzdata which tar xz unzip \
+    glibc-langpack-en \
+ && dnf clean all
 
-# مهم: لو playwright داخل devDependencies هيتشال بـ --omit=dev
-# انقله لـ "dependencies" أو شيل --omit=dev
+# لو playwright في devDependencies حوّله إلى dependencies أو اشيل --omit=dev
+COPY package*.json ./
 RUN npm ci
 
-# نزّل Chromium + اعتمادياته النظامية داخل الصورة
-# خليك على نفس نسخة playwright المكتوبة في package.json (مثلاً 1.46.0)
-RUN npx --yes playwright@$(node -p "require('./package.json').dependencies.playwright?.replace('^','') || '1.46.0'") install --with-deps chromium
+# نزّل Chromium فقط (بدون --with-deps) داخل /ms-playwright
+RUN npx --yes playwright install chromium
 
-# انسخ بقية الكود
+# باقي الكود
 COPY . .
 
-# الهاندلر
+# اسم الهاندلر
 CMD ["index.handler"]
