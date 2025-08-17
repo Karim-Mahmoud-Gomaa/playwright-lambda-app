@@ -3,7 +3,7 @@ name: Deploy to AWS ECR
 on:
   push:
     branches:
-      - main   # النشر فقط عند الدفع على main
+      - master   # النشر فقط عند الدفع على master
       # - dev  # لو تحب تضيف dev لكن بدون push للـECR
 
 jobs:
